@@ -36,7 +36,8 @@ class TradeModel:
         self.average_price = 0
 
     def buy_stock(self, price, quantity):
-        quantity = min(quantity, self.capital // price)
+        quantity = min(quantity,
+                       (self.capital // price) // 100 * 100)  # 100株単位に調整
         if quantity > 0:
             self.capital -= quantity * price
             self.holding_quantity += quantity
@@ -47,7 +48,8 @@ class TradeModel:
                 f"Bought {quantity} shares at {price} each. New capital: {self.capital}, Holding: {self.holding_quantity}, Average purchase price: {self.average_price}")
 
     def sell_stock(self, price, quantity):
-        quantity = min(quantity, self.holding_quantity)
+        quantity = min(quantity,
+                       (self.holding_quantity // 100) * 100)  # 100株単位に調整
         if quantity > 0:
             self.capital += quantity * price
             self.holding_quantity -= quantity
@@ -106,15 +108,18 @@ class TradeController:
             f"Before Action - Capital: {self.model.capital}, Holding Quantity: {self.model.holding_quantity}, Average Price: {self.model.average_price}")
 
         if self.model.holding_quantity == 0:
-            quantity = int(self.model.capital / current_price)
+            quantity = (
+                                   self.model.capital // current_price) // 100 * 100  # 100株単位に調整
             if quantity > 0:
                 action = 'buy'
         else:
             if current_price >= self.model.average_price * upper_limit and \
                     short_term_ma[-1] > long_term_ma[-1]:
-                action, quantity = 'sell', self.model.holding_quantity
+                action, quantity = 'sell', (
+                                                       self.model.holding_quantity // 100) * 100  # 100株単位に調整
             elif current_price <= self.model.average_price * lower_limit:
-                action, quantity = 'sell', self.model.holding_quantity
+                action, quantity = 'sell', (
+                                                       self.model.holding_quantity // 100) * 100  # 100株単位に調整
 
         self.logger.info(
             f"After Action - Capital: {self.model.capital}, Holding Quantity: {self.model.holding_quantity}, Average Price: {self.model.average_price}")
@@ -185,7 +190,3 @@ def main():
         os.makedirs(os.path.dirname(results_filename), exist_ok=True)
         results_df.to_csv(results_filename, index=False)
         logging.info(f"Backtest results saved to {results_filename}")
-
-
-if __name__ == "__main__":
-    main()
