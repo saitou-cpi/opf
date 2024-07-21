@@ -85,13 +85,13 @@ class TradeController:
     def trading_logic(self, current_price, upper_limit, lower_limit):
         action, quantity = None, 0
 
-        if len(self.historical_prices) < 10:
+        if len(self.historical_prices) < 15:
             self.logger.error(
                 "Not enough historical data to calculate moving averages.")
             return action, quantity
 
         short_term_ma = self.calculate_moving_average(self.historical_prices, 5)
-        long_term_ma = self.calculate_moving_average(self.historical_prices, 10)
+        long_term_ma = self.calculate_moving_average(self.historical_prices, 15)
 
         if any(x is None for x in [short_term_ma, long_term_ma]) or any(
                 len(x) == 0 for x in [short_term_ma, long_term_ma]):

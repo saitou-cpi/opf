@@ -18,7 +18,7 @@ def calculate_moving_average(prices, window):
 # トレンドを判定する関数
 def determine_trend(prices):
     short_term_ma = calculate_moving_average(prices, 5).iloc[-1]
-    long_term_ma = calculate_moving_average(prices, 10).iloc[-1]
+    long_term_ma = calculate_moving_average(prices, 15).iloc[-1]
 
     if short_term_ma > long_term_ma:
         return "上昇トレンド"

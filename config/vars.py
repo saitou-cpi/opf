@@ -1,7 +1,7 @@
 # config/vars.py
 
 # ターゲット銘柄（複数対応）
-ticker_symbols = ['4246.T', '4820.T', '3861.T']
+ticker_symbols = ['4246.T', '4820.T']
 
 # 初期所持金
 initial_capital = 100000
