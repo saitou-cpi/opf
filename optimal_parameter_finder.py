@@ -6,12 +6,15 @@ import numpy as np
 from config.vars import ticker_symbol, initial_capital
 
 # ログの設定
-log_dir = "optimal_parameter_log"
-os.makedirs(log_dir, exist_ok=True)
+def setup_logging(symbol):
+    log_dir = os.path.abspath("optimal_parameter_log")
+    os.makedirs(log_dir, exist_ok=True)
+    results_date_str = datetime.datetime.now().strftime('%Y%m%d%H%M')
+    log_filename = os.path.join(log_dir, f'{symbol.replace(".", "_")}_optimal_parameter_{results_date_str}.log')
+    logging.basicConfig(filename=log_filename, level=logging.INFO)
+    return log_dir
 
-results_date_str = datetime.datetime.now().strftime('%Y%m%d%H%M')
-log_filename = os.path.join(log_dir, f'{ticker_symbol.replace(".", "_")}_optimal_parameter_{results_date_str}.log')
-logging.basicConfig(filename=log_filename, level=logging.INFO)
+log_dir = setup_logging(ticker_symbol)
 
 # 株価データの読み込み
 def load_stock_data(filename):
@@ -24,11 +27,10 @@ def load_stock_data(filename):
         logging.error(f"File {filename} does not exist")
         raise FileNotFoundError(f"File {filename} does not exist")
 
-output_dir = "stockdata"
+output_dir = os.path.abspath("stockdata")
 stockdata_date_str = datetime.datetime.now().strftime('%Y%m%d')
 csv_filename = os.path.join(output_dir, f'{ticker_symbol.replace(".", "_")}_one_month_daily_stock_data_{stockdata_date_str}.csv')
 df = load_stock_data(csv_filename)
-
 
 class TradeModel:
     def __init__(self, initial_capital):
@@ -36,6 +38,22 @@ class TradeModel:
         self.holding_quantity = 0
         self.average_price = 0
 
+    def buy_stock(self, price, quantity):
+        quantity = min(quantity, self.capital // price)
+        if quantity > 0:
+            self.capital -= quantity * price
+            self.holding_quantity += quantity
+            self.average_price = ((self.average_price * (self.holding_quantity - quantity)) + (price * quantity)) / self.holding_quantity
+            logging.info(f"Bought {quantity} shares at {price} each. New capital: {self.capital}, Holding: {self.holding_quantity}, Average purchase price: {self.average_price}")
+
+    def sell_stock(self, price, quantity):
+        quantity = min(quantity, self.holding_quantity)
+        if quantity > 0:
+            self.capital += quantity * price
+            self.holding_quantity -= quantity
+            if self.holding_quantity == 0:
+                self.average_price = 0
+            logging.info(f"Sold {quantity} shares at {price} each. New capital: {self.capital}, Holding: {self.holding_quantity}, Average purchase price: {self.average_price}")
 
 class TradeController:
     def __init__(self, df, symbol, initial_capital):
@@ -60,8 +78,7 @@ class TradeController:
         return moving_average
 
     def trading_logic(self, current_price, upper_limit, lower_limit):
-        action = None
-        quantity = 0
+        action, quantity = None, 0
 
         if len(self.historical_prices) < 10:
             self.logger.error("Not enough historical data to calculate moving averages.")
@@ -75,83 +92,46 @@ class TradeController:
             return action, quantity
 
         min_length = min(len(short_term_ma), len(long_term_ma))
-        short_term_ma = short_term_ma[-min_length:]
-        long_term_ma = long_term_ma[-min_length:]
+        short_term_ma, long_term_ma = short_term_ma[-min_length:], long_term_ma[-min_length:]
 
         self.logger.info(f"Short-term MA: {short_term_ma[-1]}, Long-term MA: {long_term_ma[-1]}")
-
         self.logger.info(f"Before Action - Capital: {self.model.capital}, Holding Quantity: {self.model.holding_quantity}, Average Price: {self.model.average_price}")
 
         if self.model.holding_quantity == 0:
             quantity = int(self.model.capital / current_price)
             if quantity > 0:
                 action = 'buy'
+                self.model.buy_stock(current_price, quantity)
         else:
             if current_price >= self.model.average_price * upper_limit and short_term_ma[-1] > long_term_ma[-1]:
                 action, quantity = 'sell', self.model.holding_quantity
+                self.model.sell_stock(current_price, quantity)
             elif current_price <= self.model.average_price * lower_limit:
                 action, quantity = 'sell', self.model.holding_quantity
+                self.model.sell_stock(current_price, quantity)
 
         self.logger.info(f"After Action - Capital: {self.model.capital}, Holding Quantity: {self.model.holding_quantity}, Average Price: {self.model.average_price}")
-
         self.logger.info(f"Action: {action}, Quantity: {quantity}, Price: {current_price}")
         return action, quantity
 
-
-def buy_stock(price, quantity, model):
-    if quantity * price > model.capital:
-        quantity = model.capital // price
-    if quantity > 0:
-        model.capital -= quantity * price
-        model.holding_quantity += quantity
-        if model.holding_quantity > 0:
-            model.average_price = ((model.average_price * (model.holding_quantity - quantity)) + (price * quantity)) / model.holding_quantity
-        logging.info(f"Bought {quantity} shares at {price} each. New capital: {model.capital}, Holding: {model.holding_quantity}, Average purchase price: {model.average_price}")
-    return model
-
-
-def sell_stock(price, quantity, model):
-    if quantity > model.holding_quantity:
-        quantity = model.holding_quantity
-    if quantity > 0:
-        model.capital += quantity * price
-        model.holding_quantity -= quantity
-        if model.holding_quantity == 0:
-            model.average_price = 0
-        logging.info(f"Sold {quantity} shares at {price} each. New capital: {model.capital}, Holding: {model.holding_quantity}, Average purchase price: {model.average_price}")
-    return model
-
 def optimize_parameters(df, upper_limit, lower_limit):
-    model = TradeModel(initial_capital)
     trade_controller = TradeController(df, ticker_symbol, initial_capital)
 
-    for index, row in df.iterrows():
-        price = row['Close']
+    for price in df['Close']:
         logging.info(f"Current price: {price}")
-
         action, quantity = trade_controller.trading_logic(price, upper_limit, lower_limit)
 
-        if action == 'buy':
-            logging.info(f"Buying {quantity} shares")
-            model = buy_stock(price, quantity, model)
-        elif action == 'sell':
-            logging.info(f"Selling {quantity} shares")
-            model = sell_stock(price, quantity, model)
-
-        logging.info(f"Remaining capital: {model.capital}, Holding quantity: {model.holding_quantity}, Average purchase price: {model.average_price}")
-
-    final_value = model.capital + model.holding_quantity * df.iloc[-1]['Close']
+    final_value = trade_controller.model.capital + trade_controller.model.holding_quantity * df.iloc[-1]['Close']
     profit_loss = final_value - initial_capital
     return final_value, profit_loss
 
-if __name__ == "__main__":
+def main():
     param_combinations = [(ul, ll) for ul in [1.01, 1.05, 1.10, 1.15, 1.20] for ll in [0.90, 0.95, 0.97, 0.99, 1.00]]
 
-    best_upper_limit = None
-    best_lower_limit = None
+    best_upper_limit, best_lower_limit = None, None
     best_profit_loss = float('-inf')
-
     results = []
+
     for upper_limit, lower_limit in param_combinations:
         final_value, profit_loss = optimize_parameters(df, upper_limit, lower_limit)
         results.append((upper_limit, lower_limit, final_value, profit_loss))
@@ -168,6 +148,10 @@ if __name__ == "__main__":
 
     # 結果をCSVに保存
     results_df = pd.DataFrame(results, columns=['upper_limit', 'lower_limit', 'final_value', 'profit_loss'])
-    results_filename = os.path.join(log_dir, f'{ticker_symbol.replace(".", "_")}_optimal_parameters_results_{results_date_str}.csv')
+    results_filename = os.path.join(log_dir, f'{ticker_symbol.replace(".", "_")}_optimal_parameters_results_{datetime.datetime.now().strftime("%Y%m%d%H%M")}.csv')
+    os.makedirs(os.path.dirname(results_filename), exist_ok=True)
     results_df.to_csv(results_filename, index=False)
     logging.info(f"Backtest results saved to {results_filename}")
+
+if __name__ == "__main__":
+    main()
