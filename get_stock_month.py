@@ -11,6 +11,20 @@ output_dir = "stockdata"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
+# 移動平均を計算する関数
+def calculate_moving_average(prices, window):
+    return prices.rolling(window=window).mean()
+
+# トレンドを判定する関数
+def determine_trend(prices):
+    short_term_ma = calculate_moving_average(prices, 5).iloc[-1]
+    long_term_ma = calculate_moving_average(prices, 10).iloc[-1]
+
+    if short_term_ma > long_term_ma:
+        return "上昇トレンド"
+    else:
+        return "下降トレンド"
+
 # 各証券コードについてデータを取得
 for ticker_symbol in ticker_symbols:
     # データを格納するリストを初期化
@@ -58,3 +72,7 @@ for ticker_symbol in ticker_symbols:
     full_data.to_csv(csv_filename)
 
     print(f"日足の株価データをCSV形式で {csv_filename} に保存しました。")
+
+    # トレンドを判定して出力
+    trend = determine_trend(full_data['Close'])
+    print(f"{ticker_symbol}のトレンド: {trend}")
