@@ -70,47 +70,50 @@ class TradeController:
     def calculate_moving_average(self, prices, window):
         if len(prices) < window:
             return None
-        return np.convolve(prices, np.ones(window), 'valid') / window
+        moving_average = np.convolve(prices, np.ones(window), 'valid') / window
+        self.logger.info(
+            f"Calculated moving average for window {window}: {moving_average}")
+        return moving_average
 
     def trading_logic(self, price, upper_limit, lower_limit):
         action = None
         quantity = 0
 
-        historical_prices = self.get_historical_prices(20)
-        if len(historical_prices) < 15:
+        historical_prices = self.get_historical_prices(10)  # 短期移動平均の期間を10日に変更
+        if len(historical_prices) < 5:  # 条件を緩和
             self.logger.error(
                 "Not enough historical data to calculate moving averages.")
             return action, quantity
 
-        short_term_ma = self.calculate_moving_average(historical_prices, 3)
-        long_term_ma = self.calculate_moving_average(historical_prices, 15)
+        short_term_ma = self.calculate_moving_average(historical_prices,
+                                                      2)  # 短期移動平均の期間を2日に変更
+        long_term_ma = self.calculate_moving_average(historical_prices,
+                                                     10)  # 長期移動平均の期間を10日に変更
 
-        if short_term_ma is None or long_term_ma is None or len(short_term_ma) == 0 or len(long_term_ma) == 0:
+        if short_term_ma is None or long_term_ma is None or len(
+                short_term_ma) == 0 or len(long_term_ma) == 0:
             self.logger.error("Error calculating moving averages.")
             return action, quantity
 
-        # 短期と長期の移動平均の長さを一致させる
         min_length = min(len(short_term_ma), len(long_term_ma))
         short_term_ma = short_term_ma[-min_length:]
         long_term_ma = long_term_ma[-min_length:]
 
-        # トレンドフォロー戦略
         if short_term_ma[-1] > long_term_ma[-1]:
-            # 上昇トレンド: 取得した金額よりupper_limit%上がったら売る
             if self.model.holding_quantity > 0 and price >= self.model.average_purchase_price * upper_limit:
                 action = 'sell'
                 quantity = self.model.holding_quantity
-            # 資本金額で買える場合は買う
             elif self.model.capital >= price and self.model.holding_quantity == 0:
                 quantity = int(self.model.capital / price)
                 if quantity > 0:
                     action = 'buy'
         elif short_term_ma[-1] < long_term_ma[-1]:
-            # 下降トレンド: 取得した金額よりlower_limit%下がったら売る
             if self.model.holding_quantity > 0 and price <= self.model.average_purchase_price * lower_limit:
                 action = 'sell'
                 quantity = self.model.holding_quantity
 
+        self.logger.info(
+            f"Action: {action}, Quantity: {quantity}, Price: {price}")
         return action, quantity
 
 
