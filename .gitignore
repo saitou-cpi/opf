@@ -1,6 +1,6 @@
 opf_env/
-stockdata/*
-optimal_parameter_log/*
+/stockdata/
+/optimal_parameter_log/
 
 *.pyc
 __pycache__/
